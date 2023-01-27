@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Lib (runServant) where
@@ -22,6 +23,16 @@ import Servant
     serve,
     type (:<|>) (..),
     type (:>),
+  )
+import Servant.HTML.Blaze (HTML)
+import Text.Blaze.Html5 as H
+  ( Html,
+    body,
+    docTypeHtml,
+    h1,
+    head,
+    title,
+    toHtml,
   )
 
 data Position = Position
@@ -73,24 +84,48 @@ emailForClient c = Email from' to' subject' body'
         ++ " product? Give us a visit!"
 
 -- Handlers
-hello :: Maybe String -> Handler HelloMessage
-hello mname = return . HelloMessage $ case mname of
+helloHandler :: Maybe String -> Handler HelloMessage
+helloHandler mname = return . HelloMessage $ case mname of
   Nothing -> "Hello, anonymous coward"
   Just n -> "Hello, " ++ n
 
-position :: Int -> Int -> Handler Position
-position x y = return $ Position x y
+positionHandler :: Int -> Int -> Handler Position
+positionHandler x y = return $ Position x y
 
-marketing :: ClientInfo -> Handler Email
-marketing c = return $ emailForClient c
+marketingHandler :: ClientInfo -> Handler Email
+marketingHandler c = return $ emailForClient c
+
+nameHandler :: Handler H.Html
+nameHandler = return . docTypeHtml $ do
+  H.head $ do
+    H.title "This is name page"
+  H.body $ do
+    H.h1 "My name is Radish"
+
+ageHandler :: Handler H.Html
+ageHandler = return . docTypeHtml $ do
+  H.head $ do
+    H.title "This is age page"
+  H.body $ do
+    H.h1 . H.toHtml $ "My age is " ++ show age ++ "."
+  where
+    age :: Integer
+    age = 28
 
 type API =
   "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
     :<|> "hello" :> QueryParam "name" String :> Get '[JSON] HelloMessage
     :<|> "marketing" :> ReqBody '[JSON] ClientInfo :> Post '[JSON] Email
+    :<|> "name" :> Get '[HTML] H.Html
+    :<|> "age" :> Get '[HTML] H.Html
 
 server :: Server API
-server = position :<|> hello :<|> marketing
+server =
+  positionHandler
+    :<|> helloHandler
+    :<|> marketingHandler
+    :<|> nameHandler
+    :<|> ageHandler
 
 api :: Proxy API
 api = Proxy
