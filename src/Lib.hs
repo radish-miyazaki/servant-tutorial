@@ -1,44 +1,42 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Lib
-  ( startApp,
-    app,
-  )
-where
+module Lib (runServant) where
 
-import Data.Aeson
-import Data.Aeson.TH
-import Network.Wai
-import Network.Wai.Handler.Warp
-import Servant
+import Data.Aeson (ToJSON)
+import Data.Time.Calendar
+import GHC.Generics (Generic)
+import Network.Wai (Application)
+import Network.Wai.Handler.Warp (run)
+import Servant (Get, JSON, Proxy (..), Server, serve, (:>))
 
 data User = User
-  { userId :: Int,
-    userFirstName :: String,
-    userLastName :: String
+  { name :: String,
+    age :: Int,
+    email :: String,
+    registration_date :: Day
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
 
-$(deriveJSON defaultOptions ''User)
+instance ToJSON User
 
-type API = "users" :> Get '[JSON] [User]
-
-startApp :: IO ()
-startApp = run 8080 app
-
-app :: Application
-app = serve api server
-
-api :: Proxy API
-api = Proxy
-
-server :: Server API
-server = return users
-
-users :: [User]
-users =
-  [ User 1 "Isaac" "Newton",
-    User 2 "Albert" "Einstein"
+users1 :: [User]
+users1 =
+  [ User "Isaac Newton" 372 "issac@netton.co.uk" (fromGregorian 1683 3 1),
+    User "Albert Einstein" 136 "ae@mc2.org" (fromGregorian 1905 12 1)
   ]
+
+type UserAPI1 = "users" :> Get '[JSON] [User]
+
+server1 :: Server UserAPI1
+server1 = return users1
+
+userAPI :: Proxy UserAPI1
+userAPI = Proxy
+
+app1 :: Application
+app1 = serve userAPI server1
+
+runServant :: IO ()
+runServant = run 8080 app1
