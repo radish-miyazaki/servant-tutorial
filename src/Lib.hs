@@ -5,7 +5,7 @@
 
 module Lib (runServant) where
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (FromJSON, ToJSON, parseJSON)
 import Data.List (intercalate)
 import GHC.Generics (Generic)
 import Network.Wai (Application)
@@ -15,6 +15,7 @@ import Servant
     Get,
     Handler,
     JSON,
+    PlainText,
     Post,
     Proxy (..),
     QueryParam,
@@ -67,6 +68,11 @@ data Email = Email
 
 instance ToJSON Email
 
+newtype NameWrapper = NameWrapper {getName :: String} deriving (Generic)
+
+instance FromJSON NameWrapper where
+  parseJSON v = NameWrapper <$> parseJSON v
+
 emailForClient :: ClientInfo -> Email
 emailForClient c = Email from' to' subject' body'
   where
@@ -112,12 +118,16 @@ ageHandler = return . docTypeHtml $ do
     age :: Integer
     age = 28
 
+namePostHandler :: NameWrapper -> Handler String
+namePostHandler (NameWrapper name) = return name
+
 type API =
-  "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
+  "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position -- /position/1/2
     :<|> "hello" :> QueryParam "name" String :> Get '[JSON] HelloMessage
     :<|> "marketing" :> ReqBody '[JSON] ClientInfo :> Post '[JSON] Email
     :<|> "name" :> Get '[HTML] H.Html
     :<|> "age" :> Get '[HTML] H.Html
+    :<|> "name" :> ReqBody '[JSON] NameWrapper :> Post '[PlainText] String
 
 server :: Server API
 server =
@@ -126,6 +136,7 @@ server =
     :<|> marketingHandler
     :<|> nameHandler
     :<|> ageHandler
+    :<|> namePostHandler
 
 api :: Proxy API
 api = Proxy
