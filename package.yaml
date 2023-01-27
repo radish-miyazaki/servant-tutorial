@@ -25,7 +25,8 @@ dependencies:
 - servant-server
 - wai
 - warp
-- time
+- blaze-html
+- servant-blaze
 
 ghc-options:
 - -Wall
