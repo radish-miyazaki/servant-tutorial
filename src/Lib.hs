@@ -5,6 +5,7 @@
 
 module Lib (runServant) where
 
+import Control.Monad.Error.Class
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, parseJSON)
 import Data.List (intercalate)
@@ -27,6 +28,7 @@ import Servant
     type (:>),
   )
 import Servant.HTML.Blaze (HTML)
+import Servant.Server.Internal.ServerError
 import Text.Blaze.Html5 as H
   ( Html,
     body,
@@ -133,6 +135,21 @@ ageReaderMonadHandler = return "10"
 readerToHandler :: Reader String x -> Handler x
 readerToHandler r = return $ runReader r "reader env"
 
+nameWithIOHandler :: String -> Handler String
+nameWithIOHandler name = do
+  liftIO $ print $ "input name = " ++ name -- IO Monad
+  return name
+
+exceptHandler :: Handler String
+exceptHandler =
+  if True
+    then
+      throwError $
+        err500
+          { errBody = "Exception in module A.B.C:55. Have a great day!"
+          }
+    else return "sras"
+
 type API =
   "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
     :<|> "hello" :> QueryParam "name" String :> Get '[JSON] HelloMessage
@@ -142,6 +159,8 @@ type API =
     :<|> "name" :> ReqBody '[JSON] NameWrapper :> Post '[PlainText] String
     :<|> "person" :> "name" :> Get '[PlainText] String
     :<|> "person" :> "age" :> Get '[PlainText] String
+    :<|> "name" :> "log" :> ReqBody '[JSON] String :> Post '[PlainText] String
+    :<|> "errname" :> Get '[PlainText] String
 
 server :: Server API
 server =
@@ -153,6 +172,8 @@ server =
     :<|> namePostHandler
     :<|> readerToHandler nameReaderMonadHandler
     :<|> readerToHandler ageReaderMonadHandler
+    :<|> nameWithIOHandler
+    :<|> exceptHandler
 
 -- This is example to use another Monad (ex.Reader) for Server
 -- type API =
