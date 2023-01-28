@@ -27,6 +27,7 @@ dependencies:
 - warp
 - blaze-html
 - servant-blaze
+- mtl
 
 ghc-options:
 - -Wall

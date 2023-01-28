@@ -35,6 +35,7 @@ library
       aeson
     , base >=4.7 && <5
     , blaze-html
+    , mtl
     , servant-blaze
     , servant-server
     , wai
@@ -52,6 +53,7 @@ executable servant-tutorial-exe
       aeson
     , base
     , blaze-html
+    , mtl
     , servant-blaze
     , servant-server
     , servant-tutorial
@@ -74,6 +76,7 @@ test-suite servant-tutorial-test
     , hspec
     , hspec-wai
     , hspec-wai-json
+    , mtl
     , servant-blaze
     , servant-server
     , servant-tutorial
