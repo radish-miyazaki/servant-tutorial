@@ -5,6 +5,7 @@
 
 module Lib (runServant) where
 
+import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, parseJSON)
 import Data.List (intercalate)
 import GHC.Generics (Generic)
@@ -121,13 +122,26 @@ ageHandler = return . docTypeHtml $ do
 namePostHandler :: NameWrapper -> Handler String
 namePostHandler (NameWrapper name) = return name
 
+nameReaderMonadHandler :: Reader String String
+nameReaderMonadHandler = do
+  r <- ask
+  return $ r ++ " : sras"
+
+ageReaderMonadHandler :: Reader String String
+ageReaderMonadHandler = return "10"
+
+readerToHandler :: Reader String x -> Handler x
+readerToHandler r = return $ runReader r "reader env"
+
 type API =
-  "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position -- /position/1/2
+  "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
     :<|> "hello" :> QueryParam "name" String :> Get '[JSON] HelloMessage
     :<|> "marketing" :> ReqBody '[JSON] ClientInfo :> Post '[JSON] Email
     :<|> "name" :> Get '[HTML] H.Html
     :<|> "age" :> Get '[HTML] H.Html
     :<|> "name" :> ReqBody '[JSON] NameWrapper :> Post '[PlainText] String
+    :<|> "person" :> "name" :> Get '[PlainText] String
+    :<|> "person" :> "age" :> Get '[PlainText] String
 
 server :: Server API
 server =
@@ -137,6 +151,25 @@ server =
     :<|> nameHandler
     :<|> ageHandler
     :<|> namePostHandler
+    :<|> readerToHandler nameReaderMonadHandler
+    :<|> readerToHandler ageReaderMonadHandler
+
+-- This is example to use another Monad (ex.Reader) for Server
+-- type API =
+--   "person" :> "name" :> Get '[PlainText] String
+--     :<|> "person" :> "age" :> Get '[PlainText] String
+--
+-- readerServer :: ServerT API (Reader String)
+-- readerServer = nameReaderMonadHandler :<|> ageReaderMonadHandler
+--
+-- handlerServer :: ServerT API Handler
+-- handlerServer = hoistServer api readerToHandler readerServer
+--
+-- api :: Proxy API
+-- api = Proxy
+--
+-- app :: Application
+-- app = serve api handlerServer
 
 api :: Proxy API
 api = Proxy
