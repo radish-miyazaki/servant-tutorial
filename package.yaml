@@ -30,6 +30,7 @@ dependencies:
 - mtl
 - sqlite-simple
 - servant-client
+- http-client
 
 ghc-options:
 - -Wall
