@@ -37,6 +37,7 @@ library
     , blaze-html
     , mtl
     , servant-blaze
+    , servant-client
     , servant-server
     , sqlite-simple
     , wai
@@ -56,6 +57,7 @@ executable servant-tutorial-exe
     , blaze-html
     , mtl
     , servant-blaze
+    , servant-client
     , servant-server
     , servant-tutorial
     , sqlite-simple
@@ -80,6 +82,7 @@ test-suite servant-tutorial-test
     , hspec-wai-json
     , mtl
     , servant-blaze
+    , servant-client
     , servant-server
     , servant-tutorial
     , sqlite-simple
