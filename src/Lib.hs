@@ -5,12 +5,15 @@
 
 module Lib (runServant) where
 
+import Control.Concurrent (forkIO, killThread)
+import Control.Exception (bracket)
 import Control.Monad.Error.Class
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, parseJSON)
 import Data.List (intercalate)
-import Database.SQLite.Simple (FromRow, ToRow, execute, execute_, field, fromRow, query_, toRow, withConnection)
+import Database.SQLite.Simple (FromRow, Only (Only), ToRow, execute, execute_, field, fromRow, query_, toRow, withConnection)
 import GHC.Generics (Generic)
+import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.Wai.Handler.Warp (run)
 import Servant
   ( Capture,
@@ -28,6 +31,7 @@ import Servant
     type (:<|>) (..),
     type (:>),
   )
+import Servant.Client (BaseUrl (BaseUrl), ClientM, Scheme (Http), client, mkClientEnv, runClientM)
 import Servant.HTML.Blaze (HTML)
 import Servant.Server.Internal.ServerError
 import Text.Blaze.Html5 as H
@@ -98,7 +102,7 @@ data Message = Message
   { id :: Int,
     content :: String
   }
-  deriving (Generic)
+  deriving (Generic, Show)
 
 instance FromJSON Message
 
@@ -183,6 +187,12 @@ postMessageHandler dbfile message = do
     execute conn "INSERT INTO messages VALUES (?, ?)" message
   return NoContent
 
+countMessagesHandler :: FilePath -> Handler Int
+countMessagesHandler dbfile = do
+  liftIO . withConnection dbfile $ \conn -> do
+    [Only count] <- query_ conn "SELECT COUNT(*) FROM messages" :: IO [Only Int]
+    return count
+
 -- API
 type API =
   "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
@@ -197,6 +207,7 @@ type API =
     :<|> "errname" :> Get '[PlainText] String
     :<|> "messages" :> ReqBody '[JSON] Message :> Post '[JSON] NoContent
     :<|> "messages" :> Get '[JSON] [Message]
+    :<|> "messages" :> "count" :> Get '[JSON] Int
 
 api :: Proxy API
 api = Proxy
@@ -216,6 +227,7 @@ server dbfile =
     :<|> exceptHandler
     :<|> postMessageHandler dbfile
     :<|> getMessagesHandler dbfile
+    :<|> countMessagesHandler dbfile
 
 -- This is example to use another Monad (ex.Reader) for Server
 -- type API =
@@ -234,8 +246,32 @@ server dbfile =
 -- app :: Application
 -- app = serve api handlerServer
 
+runApp :: FilePath -> IO ()
+runApp dbname = run 5000 (serve api $ server dbname)
+
+-- clients
+type ClientAPI =
+  "messages" :> ReqBody '[JSON] Message :> Post '[JSON] NoContent
+    :<|> "messages" :> Get '[JSON] [Message]
+    :<|> "messages" :> "count" :> Get '[JSON] Int
+
+clientAPI :: Proxy ClientAPI
+clientAPI = Proxy
+
+postMessageClient :: Message -> ClientM NoContent
+getMessagesClient :: ClientM [Message]
+countMessagesClient :: ClientM Int
+postMessageClient :<|> getMessagesClient :<|> countMessagesClient = client clientAPI
+
 runServant :: IO ()
 runServant = do
   let dbname = "mydb"
   initDB dbname
-  run 5000 (serve api $ server dbname)
+  mgr <- newManager defaultManagerSettings
+  bracket (forkIO $ runApp dbname) killThread $ \_ -> do
+    ms <- flip runClientM (mkClientEnv mgr (BaseUrl Http "localhost" 5000 "")) $ do
+      count <- countMessagesClient
+      _ <- postMessageClient (Message ((+) count 1) "Hello")
+      _ <- postMessageClient (Message ((+) count 2) "World")
+      getMessagesClient
+    print ms
