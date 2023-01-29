@@ -9,14 +9,15 @@ import Control.Monad.Error.Class
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, parseJSON)
 import Data.List (intercalate)
+import Database.SQLite.Simple (FromRow, ToRow, execute, execute_, field, fromRow, query_, toRow, withConnection)
 import GHC.Generics (Generic)
-import Network.Wai (Application)
 import Network.Wai.Handler.Warp (run)
 import Servant
   ( Capture,
     Get,
     Handler,
     JSON,
+    NoContent (NoContent),
     PlainText,
     Post,
     Proxy (..),
@@ -92,6 +93,27 @@ emailForClient c = Email from' to' subject' body'
         ++ intercalate ", " (clientInterestedIn c)
         ++ " product? Give us a visit!"
 
+-- Database
+data Message = Message
+  { id :: Int,
+    content :: String
+  }
+  deriving (Generic)
+
+instance FromJSON Message
+
+instance ToJSON Message
+
+instance FromRow Message where
+  fromRow = Message <$> field <*> field
+
+instance ToRow Message where
+  toRow (Message id_ content_) = toRow (id_, content_)
+
+initDB :: FilePath -> IO ()
+initDB dbfile = withConnection dbfile $ \conn ->
+  execute_ conn "CREATE TABLE IF NOT EXISTS messages (id integer primary key, content text not null)"
+
 -- Handlers
 helloHandler :: Maybe String -> Handler HelloMessage
 helloHandler mname = return . HelloMessage $ case mname of
@@ -150,6 +172,17 @@ exceptHandler =
           }
     else return "sras"
 
+getMessagesHandler :: FilePath -> Handler [Message]
+getMessagesHandler dbfile = do
+  liftIO . withConnection dbfile $ \conn ->
+    query_ conn "SELECT * FROM messages" :: IO [Message]
+
+postMessageHandler :: FilePath -> Message -> Handler NoContent
+postMessageHandler dbfile message = do
+  liftIO . withConnection dbfile $ \conn ->
+    execute conn "INSERT INTO messages VALUES (?, ?)" message
+  return NoContent
+
 type API =
   "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
     :<|> "hello" :> QueryParam "name" String :> Get '[JSON] HelloMessage
@@ -161,9 +194,11 @@ type API =
     :<|> "person" :> "age" :> Get '[PlainText] String
     :<|> "name" :> "log" :> ReqBody '[JSON] String :> Post '[PlainText] String
     :<|> "errname" :> Get '[PlainText] String
+    :<|> "messages" :> ReqBody '[JSON] Message :> Post '[JSON] NoContent
+    :<|> "messages" :> Get '[JSON] [Message]
 
-server :: Server API
-server =
+server :: FilePath -> Server API
+server dbfile =
   positionHandler
     :<|> helloHandler
     :<|> marketingHandler
@@ -174,6 +209,8 @@ server =
     :<|> readerToHandler ageReaderMonadHandler
     :<|> nameWithIOHandler
     :<|> exceptHandler
+    :<|> postMessageHandler dbfile
+    :<|> getMessagesHandler dbfile
 
 -- This is example to use another Monad (ex.Reader) for Server
 -- type API =
@@ -195,8 +232,8 @@ server =
 api :: Proxy API
 api = Proxy
 
-app :: Application
-app = serve api server
-
 runServant :: IO ()
-runServant = run 5000 app
+runServant = do
+  let dbname = "mydb"
+  initDB dbname
+  run 5000 (serve api $ server dbname)
