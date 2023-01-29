@@ -183,6 +183,7 @@ postMessageHandler dbfile message = do
     execute conn "INSERT INTO messages VALUES (?, ?)" message
   return NoContent
 
+-- API
 type API =
   "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
     :<|> "hello" :> QueryParam "name" String :> Get '[JSON] HelloMessage
@@ -197,6 +198,10 @@ type API =
     :<|> "messages" :> ReqBody '[JSON] Message :> Post '[JSON] NoContent
     :<|> "messages" :> Get '[JSON] [Message]
 
+api :: Proxy API
+api = Proxy
+
+-- Server
 server :: FilePath -> Server API
 server dbfile =
   positionHandler
@@ -228,9 +233,6 @@ server dbfile =
 --
 -- app :: Application
 -- app = serve api handlerServer
-
-api :: Proxy API
-api = Proxy
 
 runServant :: IO ()
 runServant = do
