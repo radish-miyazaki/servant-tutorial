@@ -28,6 +28,7 @@ dependencies:
 - blaze-html
 - servant-blaze
 - mtl
+- sqlite-simple
 
 ghc-options:
 - -Wall
