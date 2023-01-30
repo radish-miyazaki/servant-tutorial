@@ -35,12 +35,14 @@ library
       aeson
     , base >=4.7 && <5
     , blaze-html
+    , containers
     , http-client
     , mtl
     , servant-blaze
     , servant-client
     , servant-server
     , sqlite-simple
+    , text
     , wai
     , warp
   default-language: Haskell2010
@@ -56,6 +58,7 @@ executable servant-tutorial-exe
       aeson
     , base
     , blaze-html
+    , containers
     , http-client
     , mtl
     , servant-blaze
@@ -63,6 +66,7 @@ executable servant-tutorial-exe
     , servant-server
     , servant-tutorial
     , sqlite-simple
+    , text
     , wai
     , warp
   default-language: Haskell2010
@@ -79,6 +83,7 @@ test-suite servant-tutorial-test
       aeson
     , base
     , blaze-html
+    , containers
     , hspec
     , hspec-wai
     , hspec-wai-json
@@ -89,6 +94,7 @@ test-suite servant-tutorial-test
     , servant-server
     , servant-tutorial
     , sqlite-simple
+    , text
     , wai
     , warp
   default-language: Haskell2010

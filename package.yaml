@@ -31,6 +31,8 @@ dependencies:
 - sqlite-simple
 - servant-client
 - http-client
+- text
+- containers
 
 ghc-options:
 - -Wall
