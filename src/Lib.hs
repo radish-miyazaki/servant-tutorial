@@ -1,22 +1,28 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE ImportQualifiedPost #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeOperators #-}
 
 module Lib (runServant) where
 
-import Control.Concurrent (forkIO, killThread)
-import Control.Exception (bracket)
 import Control.Monad.Error.Class
 import Control.Monad.Reader
 import Data.Aeson (FromJSON, ToJSON, parseJSON)
 import Data.List (intercalate)
+import Data.Map qualified as Map
+import Data.Text qualified as T
+import Data.Text.Encoding (decodeUtf8)
 import Database.SQLite.Simple (FromRow, Only (Only), ToRow, execute, execute_, field, fromRow, query_, toRow, withConnection)
 import GHC.Generics (Generic)
-import Network.HTTP.Client (defaultManagerSettings, newManager)
 import Network.Wai.Handler.Warp (run)
 import Servant
-  ( Capture,
+  ( BasicAuth,
+    BasicAuthCheck (BasicAuthCheck),
+    BasicAuthData (basicAuthPassword, basicAuthUsername),
+    BasicAuthResult (Authorized, BadPassword, NoSuchUser),
+    Capture,
+    Context (EmptyContext, (:.)),
     Get,
     Handler,
     JSON,
@@ -27,11 +33,10 @@ import Servant
     QueryParam,
     ReqBody,
     Server,
-    serve,
+    serveWithContext,
     type (:<|>) (..),
     type (:>),
   )
-import Servant.Client (BaseUrl (BaseUrl), ClientM, Scheme (Http), client, mkClientEnv, runClientM)
 import Servant.HTML.Blaze (HTML)
 import Servant.Server.Internal.ServerError
 import Text.Blaze.Html5 as H
@@ -193,6 +198,44 @@ countMessagesHandler dbfile = do
     [Only count] <- query_ conn "SELECT COUNT(*) FROM messages" :: IO [Only Int]
     return count
 
+-- Authorization
+
+type Username = T.Text
+
+type Password = T.Text
+
+type Website = T.Text
+
+data User = User
+  { user :: Username,
+    pass :: Password,
+    site :: Website
+  }
+  deriving (Eq, Show)
+
+type UserDB = Map.Map Username User
+
+createUserDB :: [User] -> UserDB
+createUserDB users = Map.fromList [(user u, u) | u <- users]
+
+userDB :: UserDB
+userDB =
+  createUserDB
+    [ User "john" "shhhh" "john.com",
+      User "foo" "bar" "foobar.net"
+    ]
+
+checkBasicAuth :: UserDB -> BasicAuthCheck User
+checkBasicAuth db = BasicAuthCheck $ \basicAuthData ->
+  let username = decodeUtf8 (basicAuthUsername basicAuthData)
+      password = decodeUtf8 (basicAuthPassword basicAuthData)
+   in case Map.lookup username db of
+        Nothing -> return NoSuchUser
+        Just u ->
+          if pass u == password
+            then return (Authorized u)
+            else return BadPassword
+
 -- API
 type API =
   "position" :> Capture "x" Int :> Capture "y" Int :> Get '[JSON] Position
@@ -208,6 +251,7 @@ type API =
     :<|> "messages" :> ReqBody '[JSON] Message :> Post '[JSON] NoContent
     :<|> "messages" :> Get '[JSON] [Message]
     :<|> "messages" :> "count" :> Get '[JSON] Int
+    :<|> BasicAuth "People's websites" User :> "mysite" :> Get '[JSON] Website
 
 api :: Proxy API
 api = Proxy
@@ -228,6 +272,7 @@ server dbfile =
     :<|> postMessageHandler dbfile
     :<|> getMessagesHandler dbfile
     :<|> countMessagesHandler dbfile
+    :<|> \usr -> return (site usr)
 
 -- This is example to use another Monad (ex.Reader) for Server
 -- type API =
@@ -247,31 +292,26 @@ server dbfile =
 -- app = serve api handlerServer
 
 runApp :: FilePath -> IO ()
-runApp dbname = run 5000 (serve api $ server dbname)
+runApp dbname = run 5000 (serveWithContext api ctx $ server dbname)
+  where
+    ctx = checkBasicAuth userDB :. EmptyContext
 
 -- clients
-type ClientAPI =
-  "messages" :> ReqBody '[JSON] Message :> Post '[JSON] NoContent
-    :<|> "messages" :> Get '[JSON] [Message]
-    :<|> "messages" :> "count" :> Get '[JSON] Int
+-- type ClientAPI =
+--   "messages" :> ReqBody '[JSON] Message :> Post '[JSON] NoContent
+--     :<|> "messages" :> Get '[JSON] [Message]
+--     :<|> "messages" :> "count" :> Get '[JSON] Int
 
-clientAPI :: Proxy ClientAPI
-clientAPI = Proxy
+-- clientAPI :: Proxy ClientAPI
+-- clientAPI = Proxy
 
-postMessageClient :: Message -> ClientM NoContent
-getMessagesClient :: ClientM [Message]
-countMessagesClient :: ClientM Int
-postMessageClient :<|> getMessagesClient :<|> countMessagesClient = client clientAPI
+-- postMessageClient :: Message -> ClientM NoContent
+-- getMessagesClient :: ClientM [Message]
+-- countMessagesClient :: ClientM Int
+-- postMessageClient :<|> getMessagesClient :<|> countMessagesClient = client clientAPI
 
 runServant :: IO ()
 runServant = do
   let dbname = "mydb"
   initDB dbname
-  mgr <- newManager defaultManagerSettings
-  bracket (forkIO $ runApp dbname) killThread $ \_ -> do
-    ms <- flip runClientM (mkClientEnv mgr (BaseUrl Http "localhost" 5000 "")) $ do
-      count <- countMessagesClient
-      _ <- postMessageClient (Message ((+) count 1) "Hello")
-      _ <- postMessageClient (Message ((+) count 2) "World")
-      getMessagesClient
-    print ms
+  runApp dbname
